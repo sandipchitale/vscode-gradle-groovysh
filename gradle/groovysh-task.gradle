@@ -1,0 +1,53 @@
+// A simple init script that adds a groovysh task to the root project.
+// The groovysh task is a debug task that allows you to run a groovy shell
+// in the context of the project. The groovysh task also adds gradle, settings
+// and project objects to the shell context. This allows you to inspect the
+// project, gradle and settings objects using the Groovy ObjectBrowser GUI.
+// You can also run any groovy code
+gradle.projectsLoaded {
+    rootProject {
+        afterEvaluate { project ->
+            if (!project.repositories.any{it.name == 'MavenRepo'}) {
+                project.repositories {
+                    // To be able to load org.apache.groovy:groovy-groovysh
+                    // its and dependencies
+                    mavenCentral()
+                }
+            }
+
+            project.configurations {
+                groovyshDependencies
+            }
+
+            project.dependencies {
+                groovyshDependencies "org.apache.groovy:groovy-groovysh:4.0.13"
+            }
+
+            project.tasks.register('gradle-groovysh') {
+                group 'debug'
+                description 'Runs an interactive shell in the context of the project. Use :inspect command to inspect project, gradle, settings or other objects.'
+                doLast {
+                    URLClassLoader groovyshClassLoader = new URLClassLoader();
+                    configurations.groovyshDependencies.each {File file ->
+                        groovyshClassLoader.addURL(file.toURI().toURL())
+                    }
+
+                    def fileHistoryClass
+                    def groovyshClass
+                    def groovyShell
+                    fileHistoryClass = Class.forName('jline.console.history.FileHistory', true, groovyshClassLoader)
+                    groovyshClass = Class.forName('org.apache.groovy.groovysh.Groovysh', true, groovyshClassLoader)
+                    if (groovyshClass) {
+                        groovyShell = groovyshClass.newInstance()
+                        if (groovyShell) {
+                            groovyShell.interp.context.variables.put("gradle", gradle)
+                            groovyShell.interp.context.variables.put("settings", gradle.settings)
+                            groovyShell.interp.context.variables.put("project", project)
+                            groovyShell.run('# Available objects: gradle, settings, project\n# Try :inspect project')
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
